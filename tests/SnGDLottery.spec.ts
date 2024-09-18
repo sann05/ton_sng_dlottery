@@ -1,5 +1,5 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { toNano } from '@ton/core';
+import { beginCell, toNano } from '@ton/core';
 import { SnGDLottery } from '../wrappers/SnGDLottery';
 import '@ton/test-utils';
 
@@ -80,13 +80,14 @@ describe('SnGDLottery', () => {
 
     it('should increase distribute payments to participants', async () => {
         const increaseTimes = 10;
+        let increaseResult;
         for (let i = 0; i < increaseTimes; i++) {
             console.log(`increase ${i + 1}/${increaseTimes}`);
 
             const participant = await blockchain.treasury('increaser' + i);
 
 
-            const increaseResult = await snGDLottery.send(
+            increaseResult = await snGDLottery.send(
                 participant.getSender(),
                 {
                     value: toNano('1.1'),
@@ -102,9 +103,42 @@ describe('SnGDLottery', () => {
 
         const participantsCountAfter = await snGDLottery.getParticipantsCount();
         const participants = await snGDLottery.getParticipants();
-        console.log('Participants: ', participants);
+        expect(increaseResult!.transactions).toHaveTransaction({
+            from: snGDLottery.address,
+            value: toNano('5'),
+            success: true,
+            body: beginCell().storeUint(0,32).storeStringTail("Congratulations! You are the first winner of the lottery!").endCell(),
+        });
+
+        expect(increaseResult!.transactions).toHaveTransaction({
+            from: snGDLottery.address,
+            value: toNano('3'),
+            success: true,
+            body: beginCell().storeUint(0,32).storeStringTail("Congratulations! You are the second winner of the lottery!").endCell(),
+        });
+
+        expect(increaseResult!.transactions).toHaveTransaction({
+            from: snGDLottery.address,
+            value: toNano('2'),
+            success: true,
+            body: beginCell().storeUint(0,32).storeStringTail("Congratulations! You are the third winner of the lottery!").endCell(),
+        });
         expect(participants.size).toBe(0);
         expect(participantsCountAfter).toBe(BigInt(0));
 
+    });
+
+    it('should withdraw fees for owner', async () => {
+        expect(true).toBe(false);
+    });
+
+    // Negative tests
+
+    it('should bounce when the send amount is not equal 1.1 TON', async () => {
+        expect(true).toBe(false);
+    });
+
+    it('should not withdraw fees for non owner', async () => {
+        expect(true).toBe(false);
     });
 });
