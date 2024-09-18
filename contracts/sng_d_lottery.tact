@@ -1,17 +1,26 @@
 import "@stdlib/deploy";
+import "@stdlib/ownable";
 
-message AddParticipant {
+
+message AddParticipantMessage {
     queryId: Int as uint64;
 
 }
 
-contract SnGDLottery with Deployable {
+message WithdrawFeesMessage {
+    queryId: Int as uint64;
+
+}
+
+contract SnGDLottery with Deployable, Ownable {
     id: Int as uint32;
+    owner: Address;
     participants_count: Int as uint32;
     participants: map<Int, Address>;
 
-    init(id: Int) {
+    init(id: Int, owner: Address) {
         self.id = id;
+        self.owner = owner;
         self.participants_count = 0;
     }
 
@@ -70,7 +79,7 @@ contract SnGDLottery with Deployable {
         self.participants = emptyMap();
     }
 
-    receive(msg: AddParticipant) {
+    receive(msg: AddParticipantMessage) {
         require(context().value == ton("1.1"), "Received value must be 1.1 TON");
         self.participants.set(self.participants_count, sender());
         self.participants_count += 1;
@@ -78,6 +87,18 @@ contract SnGDLottery with Deployable {
         if (self.participants_count > 9) {
             self.gameStart()
         }
+    }
+
+    receive(msg: WithdrawFeesMessage) {
+        require(sender() == self.owner, "Only owner can withdraw fees");
+        let allowedBalance: Int = myBalance() - ton("1") * self.participants_count - ton("0.1");
+        require(allowedBalance > 0, "Not enough balance to withdraw");
+        send(SendParameters{
+            to: self.owner,
+            value: allowedBalance,
+            body: "Withdrawal".asComment()
+        });
+        
     }
 
     get fun participantsCount(): Int {

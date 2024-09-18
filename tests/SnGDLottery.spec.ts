@@ -1,6 +1,8 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { beginCell, toNano } from '@ton/core';
 import { SnGDLottery } from '../wrappers/SnGDLottery';
+import { flattenTransaction } from '@ton/test-utils';
+import { Transaction } from '@ton/core';
 import '@ton/test-utils';
 
 describe('SnGDLottery', () => {
@@ -10,15 +12,15 @@ describe('SnGDLottery', () => {
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
-
-        snGDLottery = blockchain.openContract(await SnGDLottery.fromInit(0n));
-
         deployer = await blockchain.treasury('deployer');
+
+        snGDLottery = blockchain.openContract(await SnGDLottery.fromInit(0n, deployer.address));
+        const tonValue = toNano('0.1');
 
         const deployResult = await snGDLottery.send(
             deployer.getSender(),
             {
-                value: toNano('0.05'),
+                value: tonValue,
             },
             {
                 $$type: 'Deploy',
@@ -29,6 +31,7 @@ describe('SnGDLottery', () => {
         expect(deployResult.transactions).toHaveTransaction({
             from: deployer.address,
             to: snGDLottery.address,
+            value: tonValue,
             deploy: true,
             success: true,
         });
@@ -57,7 +60,7 @@ describe('SnGDLottery', () => {
                     value: toNano('1.1'),
                 },
                 {
-                    $$type: 'AddParticipant',
+                    $$type: 'AddParticipantMessage',
                     queryId: 0n,
                 }
             );
@@ -93,7 +96,7 @@ describe('SnGDLottery', () => {
                     value: toNano('1.1'),
                 },
                 {
-                    $$type: 'AddParticipant',
+                    $$type: 'AddParticipantMessage',
                     queryId: 0n,
                 }
             );
@@ -129,16 +132,121 @@ describe('SnGDLottery', () => {
     });
 
     it('should withdraw fees for owner', async () => {
-        expect(true).toBe(false);
+        const withdrawResult = await snGDLottery.send(
+            deployer.getSender(),
+            {
+                value: toNano('2'),
+            },
+            {
+                $$type: 'WithdrawFeesMessage',
+                queryId: 0n,
+            }
+        );
+
+        expect(withdrawResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: snGDLottery.address,
+            value: toNano('2'),
+            success: true,
+        });
+
+        expect(withdrawResult.transactions).toHaveTransaction({
+            from: snGDLottery.address,
+            to: deployer.address,
+            success: true,
+        });
+        const value = flattenTransaction(withdrawResult.transactions.at(-1) as Transaction).value;
+        expect(value).toBeGreaterThan(toNano('1.8'));
+        
+    });
+
+    it('should leave prize pool for participants but withdraw fees', async () => {
+        const increaseTimes = 5;
+        const withdrawSendValue = toNano('2');
+        for (let i = 0; i < increaseTimes; i++) {
+
+            const participant = await blockchain.treasury('increaser' + i);
+            const increaseResult = await snGDLottery.send(
+                participant.getSender(),
+                {
+                    value: toNano('1.1'),
+                },
+                {
+                    $$type: 'AddParticipantMessage',
+                    queryId: 0n,
+                }
+            );
+        }
+
+        const withdrawResult = await snGDLottery.send(
+            deployer.getSender(),
+            {
+                value: withdrawSendValue,
+            },
+            {
+                $$type: 'WithdrawFeesMessage',
+                queryId: 0n,
+            }
+        );
+
+        expect(withdrawResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: snGDLottery.address,
+            value: toNano('2'),
+            success: true,
+        });
+
+        expect(withdrawResult.transactions).toHaveTransaction({
+            from: snGDLottery.address,
+            to: deployer.address,
+            success: true,
+        });
+
+        const value = flattenTransaction(withdrawResult.transactions.at(-1) as Transaction).value;
+        expect(value).toBeGreaterThan(toNano('2') - toNano('0.2') + toNano(0.1 * increaseTimes));
     });
 
     // Negative tests
 
     it('should bounce when the send amount is not equal 1.1 TON', async () => {
-        expect(true).toBe(false);
+        const participant = await blockchain.treasury('increaser');
+        const increaseResult = await snGDLottery.send(
+            participant.getSender(),
+            {
+                value: toNano('1.2'),
+            },
+            {
+                $$type: 'AddParticipantMessage',
+                queryId: 0n,
+            }
+        );
+
+        expect(increaseResult.transactions).toHaveTransaction({
+            from: participant.address,
+            to: snGDLottery.address,
+            success: false,
+            exitCode: 46265,
+        });
     });
 
     it('should not withdraw fees for non owner', async () => {
-        expect(true).toBe(false);
+        const nonOwner = await blockchain.treasury('nonOwner');
+        const withdrawResult = await snGDLottery.send(
+            nonOwner.getSender(),
+            {
+                value: toNano('0.1'),
+            },
+            {
+                $$type: 'WithdrawFeesMessage',
+                queryId: 0n,
+            }
+        );
+
+        expect(withdrawResult.transactions).toHaveTransaction({
+            from: nonOwner.address,
+            to: snGDLottery.address,
+            success: false,
+            exitCode: 9560,
+        });
     });
 });
