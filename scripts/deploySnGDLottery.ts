@@ -3,7 +3,10 @@ import { SnGDLottery } from '../wrappers/SnGDLottery';
 import { NetworkProvider } from '@ton/blueprint';
 
 export async function run(provider: NetworkProvider) {
-    const snGDLottery = provider.open(await SnGDLottery.fromInit(BigInt(Math.floor(Math.random() * 10000))));
+    const snGDLottery = provider.open(await SnGDLottery.fromInit(
+        BigInt(Math.floor(Math.random() * 10000)),
+        provider.sender().address!
+    ));
 
     await snGDLottery.send(
         provider.sender(),
